@@ -1,0 +1,623 @@
+---
+title: "KNN、區別分析、單純貝氏與支援向量機"
+subtitle: "監督式學習：距離、核方法與機率模型"
+lang: zh-TW
+language:                      # Quarto 介面文字（繁體中文）
+  callout-note-title: "說明"
+format:
+  html:                        # ← 報告（HTML）形式，預設輸出
+    theme: cosmo               # 版面主題：可換 flatly、lumen、journal、litera…
+    toc: true                  # 側邊目錄
+    toc-title: "目錄"
+    toc-location: left
+    toc-depth: 3
+    toc-expand: true
+    number-sections: true      # 章節自動編號
+    number-depth: 3
+    section-divs: true
+    code-tools: true           # 右上角顯示/隱藏程式碼按鈕
+    code-fold: false           # 改 true 則程式碼預設折疊
+    embed-resources: true      # 產生單一自含 .html，方便上傳 Moodle
+    smooth-scroll: true
+    fig-align: center
+    tbl-cap-location: bottom
+    html-math-method: mathjax
+    css: report.css            # 若無此檔可整行刪除
+  beamer:                      # ← 保留投影片版本；只想輸出報告時用
+    theme: Madrid              #    quarto render <檔名>.qmd --to html
+    colortheme: default
+    fonttheme: professionalfonts
+    aspectratio: 169          # 16:9 寬螢幕；改 43 為 4:3
+    navigation: horizontal
+    section-titles: true       # 每個一級標題自動產生分節頁
+    toc: true                  # 目錄頁
+    toc-title: "大綱"
+    slide-level: 2             # 用 ## 當作一張投影片
+    pdf-engine: xelatex        # 中文與 Times New Roman 需要 xelatex
+    keep-tex: false            # 除錯時可改 true 保留 .tex
+    incremental: false         # 改 true 則項目逐條出現
+    header-includes: |
+      \usepackage{fontspec}
+      \setmainfont{Times New Roman}
+      \usepackage{xeCJK}
+      \setCJKmainfont{DFKai-SB}   % 中文字型：標楷體（Windows 內建 kaiu.ttf）
+      % 若要換字型可改：微軟正黑體 Microsoft JhengHei、新細明體 PMingLiU
+      \usepackage{amsmath, amssymb}
+      \setbeamertemplate{caption}[numbered]
+jupyter: python3                 # 以 Python (Jupyter) 執行程式碼
+execute:
+  echo: true       # 顯示程式碼；設 false 則只顯示結果
+  warning: false
+  message: false
+  freeze: auto
+---
+
+# K-近鄰法（KNN）
+
+::: {.test-name}
+以鄰域投票或平均估計條件機率與條件平均
+:::
+
+**核心想法：**以離新觀測值最近的 $k$ 個訓練點投票（分類）或取平均（迴歸）。**用途：**分類與迴歸皆可，適合特徵少、樣本多、決策邊界不規則的資料，例如依相似案例預測、手寫數字辨識。
+
+## 概念與演算法
+
+**錯誤率。** 分類的錯誤率是預測錯誤的比例 $\frac{1}{n}\sum_{i=1}^{n} I(y_i \ne \hat{y}_i)$。迴歸則用均方誤差 $\frac{1}{n}\sum_{i=1}^{n}(y_i - \hat{f}(x_i))^2$。
+
+使測試錯誤率最小的是**貝氏分類器**（Bayes classifier）：把 $x_0$ 分到條件機率 $\Pr(Y = j \mid X = x_0)$ 最大的類別 $j$。
+實際資料中這個分佈未知，因此貝氏分類器是一個無法達到的黃金標準。**KNN 以「局部」的方式估計它。**
+令 $\mathcal{N}_k(x_0)$ 為離 $x_0$ 最近的 $k$ 個訓練點：
+
+$$
+\widehat{\Pr}(Y = j \mid X = x_0) = \frac{1}{k} \sum_{i \in \mathcal{N}_k(x_0)} I(y_i = j),
+\qquad
+\hat{f}(x_0) = \frac{1}{k}\sum_{x_i \in \mathcal{N}_k(x_0)} y_i .
+$$
+
+分類時取估計機率最大的類別（多數決）；迴歸時取鄰居反應值的平均，估計的是 $E(Y \mid X = x_0)$。
+這裡做了兩個近似：以**樣本平均**取代期望值，並把「在某一點上」的條件放寬為「在該點的**鄰域**上」的條件。
+
+| | KNN 分類 | KNN 迴歸 |
+|:--|:--|:--|
+| 反應變數 $Y$ | 類別型 | 連續型 |
+| 在 $x_0$ 的預測 | $\mathcal{N}_k(x_0)$ 中的多數類別 | $\mathcal{N}_k(x_0)$ 中 $y_i$ 的平均 |
+| 估計的目標 | $\Pr(Y = j \mid X = x_0)$ | $E(Y \mid X = x_0)$ |
+| scikit-learn | `KNeighborsClassifier` | `KNeighborsRegressor` |
+
+**演算法。**（1）把每個特徵標準化為平均 0、變異數 1；（2）計算 $x_0$ 到每個訓練點的歐氏距離
+$d_i = \lVert x_i - x_0 \rVert$；（3）保留最近的 $k$ 個；（4）投票（分類）或取平均（迴歸）。
+
+::: {.callout-caution title="注意"}
+KNN 完全透過距離運作，因此**變數的尺度很重要**：以大單位量測的變數會主導距離。請先標準化（`StandardScaler`）。
+:::
+
+## 偏差–變異與 k 的選擇
+
+設 $Y = f(X) + \varepsilon$、$\operatorname{Var}(\varepsilon) = \sigma^2_\varepsilon$，並把訓練輸入視為固定，
+KNN 迴歸在 $x_0$ 的期望預測誤差為
+
+$$
+\operatorname{Err}(x_0)
+= \sigma^2_\varepsilon
++ \Bigl[f(x_0) - \frac{1}{k}\sum_{\ell=1}^{k} f(x_{(\ell)})\Bigr]^2
++ \frac{\sigma^2_\varepsilon}{k},
+$$
+
+即**不可約誤差 + 偏差平方 + 變異**，其中 $x_{(\ell)}$ 是 $x_0$ 的第 $\ell$ 個近鄰。變異 $\sigma^2_\varepsilon / k$
+隨 $k$ 增加而下降；偏差通常隨 $k$ 增加，因為鄰域延伸得離 $x_0$ 更遠。模型複雜度與 $k$ 成反比，**有效參數個數約為 $N/k$**。
+
+| | 小 $k$（例如 $k = 1$） | 大 $k$ |
+|:--|:--|:--|
+| 邊界／擬合 | 鋸齒狀、不規則 | 平滑；$k = N$ 時全部預測為多數類別 |
+| 有效參數個數 $N/k$ | 多 | 少 |
+| 偏差／變異 | 低偏差、**高變異** | **高偏差**、低變異 |
+| 訓練誤差 | $k = 1$ 時為 $0$ | 較高 |
+| 風險 | 過度配適 | 配適不足 |
+
+**實務上如何選 k：**
+
+1. 在 `Pipeline` 中**標準化**特徵，讓每一折只用自己的訓練部分來計算尺度。
+2. 在一組 $k$ 上計算 **10 折交叉驗證誤差**（訓練誤差不能用來選 $k$：$k = 1$ 時永遠是 0）。
+3. 選 CV 誤差最小的 $k$；CV 曲線在最小值附近通常很平坦，平坦區內的 $k$ 表現相近。
+兩類問題時用**奇數** $k$ 可避免平手。不要不經選擇就直接用 $k = 1$：它的變異最大，通常是最差的選擇之一。
+4. 與 **null rate**（永遠預測多數類別的錯誤率）比較，最後才用另外的測試集報告誤差。
+5. 某一類很稀有時，以**精確率**、召回率評估，而不是整體錯誤率。
+
+## 何時使用 KNN
+
+| 面向 | 適合 KNN | 不適合 KNN |
+|:--|:--|:--|
+| 目標 | **預測** | 推論：哪些變數重要、$p$ 值 |
+| 關係／邊界 | **高度不規則**、非線性；每一類有許多「原型」 | 線性或接近線性 |
+| 樣本數相對變數數 | **$N \gg p$** | 每個變數分到的觀測值很少 |
+| 變數個數 | **$p$ 小**（少數有資訊的特徵） | $p$ 大、許多無關特徵 |
+| 特徵型態 | 連續型、可標準化 | 大量類別型特徵 |
+| 預測成本 | $N$ 適中 | $N$ 極大且需要快速即時預測（必須儲存並搜尋全部訓練資料） |
+| 類別 | 平衡，或以精確率／召回率評估 | 稀有類別卻只看整體錯誤率 |
+
+
+# 線性與二次區別分析（LDA、QDA）
+
+::: {.test-name}
+高斯生成式分類器
+:::
+
+**核心想法：**假設各類別內的資料服從多元常態分佈，再以貝氏定理求後驗機率；LDA 假設各類共變異相同而得到線性邊界，QDA 允許各類共變異不同而得到二次邊界。**用途：**只能分類；適合連續特徵、各類形狀大致為橢圓的資料，例如醫學診斷指標、信用評分、物種分類，LDA 也可把多類資料投影到低維空間觀察。
+
+## 生成式方法
+
+Logistic 迴歸**直接**建模 $\Pr(Y = k \mid X = x)$。*生成式*分類器則是建模**每一類之內** $X$ 的分佈，再用貝氏定理反推：
+
+$$
+p_k(x) = \Pr(Y = k \mid X = x)
+= \frac{\pi_k f_k(x)}{\sum_{l=1}^{K} \pi_l f_l(x)},
+$$
+
+其中 $\pi_k$ 是類別 $k$ 的**先驗**機率，$f_k(x)$ 是 $X$ 的**類別條件密度**。估計 $\pi_k$ 很容易（類別比例）；
+估計 $p$ 維密度 $f_k$ 很困難，因此需要簡化的假設：
+
+| 方法 | 對 $f_k(x)$ 的假設 | 決策邊界 |
+|:--|:--|:--|
+| **LDA** | $N(\mu_k, \Sigma)$——**共同**共變異矩陣 | 線性 |
+| **QDA** | $N(\mu_k, \Sigma_k)$——**各類別自己的**共變異矩陣 | 二次 |
+| 單純貝氏 | 每一類之內特徵彼此獨立 | 加法形式（常為非線性） |
+| KNN | 無母數的局部密度估計 | 任意形狀 |
+
+## LDA 與 QDA 的區別函數
+
+**LDA。** 假設 $X \mid Y = k \sim N(\mu_k, \Sigma)$，每一類的 $\Sigma$ 相同。對貝氏定理取對數後，二次項互相抵銷，
+$x$ 被分到**線性區別函數**最大的類別：
+
+$$
+\delta_k(x) = x^\top \Sigma^{-1} \mu_k - \tfrac{1}{2}\, \mu_k^\top \Sigma^{-1} \mu_k + \log \pi_k ,
+$$
+
+估計值（最大概似解）為
+
+$$
+\hat{\pi}_k = \frac{N_k}{N}, \qquad
+\hat{\mu}_k = \frac{1}{N_k}\sum_{y_i = k} x_i, \qquad
+\hat{\Sigma} = \frac{1}{N - K}\sum_{k=1}^{K}\sum_{y_i = k}(x_i - \hat{\mu}_k)(x_i - \hat{\mu}_k)^\top .
+$$
+
+**QDA。** 假設 $X \mid Y = k \sim N(\mu_k, \Sigma_k)$——每一類有自己的共變異矩陣。二次項不再抵銷，邊界是**二次**曲面：
+
+$$
+\delta_k(x) = -\tfrac{1}{2}(x - \mu_k)^\top \Sigma_k^{-1}(x - \mu_k)
+- \tfrac{1}{2}\log\lvert\Sigma_k\rvert + \log \pi_k .
+$$
+
+| 參數個數 | LDA | QDA |
+|:--|:--|:--|
+| 共變異參數 | $p(p+1)/2$（一個 $\Sigma$） | $K\,p(p+1)/2$（每類一個 $\Sigma_k$） |
+| 決策規則中的參數 | $(K-1)(p+1)$ | $(K-1)\{p(p+3)/2 + 1\}$ |
+| 例：$K = 2$、$p = 50$ | 51 | 1,326 |
+
+**偏差–變異權衡。**
+
+- **LDA** 彈性低得多，因此**變異較低**；若共同共變異的假設嚴重錯誤，則會有**高偏差**。
+- 訓練集**非常大**（變異不是問題），或共同共變異**明顯不成立**時，用 **QDA**。
+- 訓練觀測值相對較少、降低變異最重要時，用 **LDA**。QDA 的共變異參數以 $K p^2 / 2$ 的速度增加；
+每類樣本數 $N_k \le p$ 時 $\hat{\Sigma}_k$ 奇異，QDA 無法估計。
+
+## Python 程式碼——邊界為線性或二次時的 LDA 與 QDA
+
+**目的：**看出何時值得用 QDA——只有在各類別的共變異結構真的不同（邊界彎曲）時，QDA 才有優勢。
+
+兩類、$p = 2$，平均為 $(-1, 0)$ 與 $(1, 0)$，變異數為 1，每類 50 筆訓練資料。
+（A）兩類的相關係數都是 0.7，真實（貝氏）邊界為**線性**；（B）相關係數分別為 0.7 與 −0.7，真實邊界為**二次**。
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import multivariate_normal as mvn
+from sklearn.discriminant_analysis import (
+    LinearDiscriminantAnalysis as LDA, QuadraticDiscriminantAnalysis as QDA)
+
+rng = np.random.default_rng(3)
+mu = [np.array([-1, 0]), np.array([1, 0])]
+cov = lambda r: np.array([[1, r], [r, 1]])
+settings = {"A: common covariance": [cov(0.7), cov(0.7)],
+            "B: different covariances": [cov(0.7), cov(-0.7)]}
+
+def sample(S, n):                                       # 每類 n 筆
+    X = np.vstack([rng.multivariate_normal(mu[k], S[k], n) for k in (0, 1)])
+    return X, np.repeat([0, 1], n)
+
+xx, yy = np.meshgrid(np.linspace(-4, 4, 300), np.linspace(-4, 4, 300))
+grid = np.c_[xx.ravel(), yy.ravel()]
+fig, axes = plt.subplots(1, 2, figsize=(10, 4.3))
+for ax, (name, S) in zip(axes, settings.items()):
+    X, y = sample(S, 50)
+    Xt, yt = sample(S, 5000)
+    bayes = lambda Z: (mvn.pdf(Z, mu[1], S[1]) > mvn.pdf(Z, mu[0], S[0])).astype(int)
+    errs = {"Bayes": np.mean(bayes(Xt) != yt)}
+    for lab, m in [("LDA", LDA()), ("QDA", QDA())]:
+        errs[lab] = 1 - m.fit(X, y).score(Xt, yt)
+        ax.contour(xx, yy, m.predict(grid).reshape(xx.shape), levels=[0.5],
+                   colors="black" if lab == "LDA" else "#55a868",
+                   linestyles=":" if lab == "LDA" else "-")
+    ax.contour(xx, yy, bayes(grid).reshape(xx.shape), levels=[0.5],
+               colors="#8172b3", linestyles="--")
+    ax.scatter(*X.T, c=np.where(y == 0, "#dd8452", "#4c72b0"), s=12)
+    ax.set_title(name, fontsize=10)
+    print(f"{name:26s} test error: " +
+          ", ".join(f"{k} = {v:.3f}" for k, v in errs.items()))
+axes[0].plot([], [], "--", color="#8172b3", label="Bayes")
+axes[0].plot([], [], ":", color="black", label="LDA")
+axes[0].plot([], [], "-", color="#55a868", label="QDA")
+axes[0].legend(frameon=False, loc="lower left")
+plt.tight_layout(); plt.show()
+```
+
+::: {.callout-note title="說明"}
+**（A）**真實邊界是線性的：LDA 與 QDA 都接近貝氏誤差（0.083 對 0.080），QDA 多出的彈性沒有帶來好處。
+**（B）**真實邊界是二次的：QDA（0.141）接近貝氏誤差（0.136），LDA 的直線則代價較高（0.160）。
+:::
+
+## Fisher 線性區別
+
+Fisher 的觀點**不需要**高斯假設也能得到 LDA：找出使**組間**變異相對於**組內**變異最大的方向 $w$：
+
+$$
+J(w) = \frac{w^\top S_B\, w}{w^\top S_W\, w},
+\qquad
+\text{兩類時：} w \propto S_W^{-1}(m_2 - m_1).
+$$
+
+其中 $m_1, m_2$ 為第 1、2 類的樣本平均向量；$S_B$ 為組間散佈矩陣，兩類時為 $(m_2 - m_1)(m_2 - m_1)^\top$；
+$S_W = \sum_k \sum_{i \in k} (x_i - m_k)(x_i - m_k)^\top$ 為組內散佈矩陣。
+
+- 只投影到兩個平均的連線上，類別可能仍然重疊；除以組內散佈後，大部分的重疊會消失。類別內特徵相關時，兩類投影到平均連線上的值會大量交疊；考慮組內散佈後改投影到另一個方向，交疊就減少。
+- $K$ 類的類別中心最多張成 **$K - 1$ 維**，因此 LDA 最多給出 $K - 1$ 個區別方向（*典型變量*，canonical variates），
+可用來把資料投影到低維空間觀察類別的分離情形。
+
+## 不平衡資料：調整後驗機率門檻
+
+- **什麼是不平衡資料：**某一類的比例很低，例如違約、罕見疾病只占全部觀測值的一小部分。
+- **影響：**在 0.5 門檻下，多數類別主導預測；整體正確率看起來很高，但稀有類別大多被漏掉，因此整體正確率無法反映模型的表現。
+- **處理：**調整後驗機率門檻（LDA、QDA 輸出後驗機率，門檻不一定要是 0.5）；類別加權（`class_weight="balanced"`）；改用敏感度、精確率、AUC 或平衡準確率評估；切分資料時分層抽樣。
+
+最佳門檻取決於兩種錯誤的成本。
+
+## 何時使用 LDA 與 QDA
+
+| 面向 | LDA | QDA |
+|:--|:--|:--|
+| 類別的形狀 | 大致高斯、**共變異相近** | 大致高斯、**共變異不同** |
+| 決策邊界 | 線性 | 二次（$x_j x_l$ 交互作用重要） |
+| 樣本數 | **小到中等**的 $N$ 即可 | 需要相對 $K p^2 / 2$ **很大**的 $N$ |
+| 維度 | $p$ 中等；$p$ 接近 $N$（$N/p < 10$）時用收縮 LDA | $p$ 小 |
+| 特徵型態 | 連續型（少數二元變數通常仍可） | 連續型 |
+| 類別數 | 多類別；還可提供 $\le K-1$ 維的投影 | 多類別 |
+| 離群值 | 不穩健（高斯最大概似估計） | 不穩健 |
+
+- 不必等資料真的呈高斯才用 LDA／QDA：只要資料量只能支撐線性或二次這類簡單的邊界，它們的估計就很穩定。
+- 因此不需要先通過多元常態或共變異同質性檢定（例如 Box's M 檢定在大樣本下幾乎總是拒絕）；
+直接以交叉驗證比較即可。檢查各類別的散布圖或共變異矩陣，可以幫助判斷該先試哪一個。
+- $p$ 接近 $N$（本 skill 的門檻為 $N/p < 10$）時連共同的 $\hat{\Sigma}$ 都不穩定，改用**收縮 LDA**（`LDA(solver="lsqr", shrinkage="auto")`）或單純貝氏。
+
+# 單純貝氏（Naive Bayes）
+
+::: {.test-name}
+類別內條件獨立
+:::
+
+**核心想法：**假設在每一類之內各特徵彼此獨立，把多維密度拆成一維密度的乘積。**用途：**只能分類；適合特徵很多（文字、基因）、樣本少，或連續與類別特徵混合的資料，例如垃圾郵件與新聞主題分類，也常作為快速的基準模型。
+
+## 模型與假設
+
+LDA 與 QDA 藉由假設高斯分佈，使估計 $p$ 維密度 $f_k(x)$ 這個難題變得可行。單純貝氏則假設
+**在第 $k$ 類之內，$p$ 個預測變數彼此獨立**：
+
+$$
+f_k(x) = f_{k1}(x_1) \times f_{k2}(x_2) \times \cdots \times f_{kp}(x_p),
+\qquad
+\Pr(Y = k \mid X = x) =
+\frac{\pi_k \prod_{j=1}^{p} f_{kj}(x_j)}{\sum_{l=1}^{K} \pi_l \prod_{j=1}^{p} f_{lj}(x_j)} .
+$$
+
+- 一個 $p$ 維密度變成 **$p$ 個一維密度**，各自分開估計——不需要估計共變異。
+- 每個一維密度可依變數型態選擇：連續型用高斯（`GaussianNB`）、類別型用各水準的比例（`CategoricalNB`）、
+計數資料用多項分佈（`MultinomialNB`），因此能自然地處理**混合型態**的特徵。
+- 取對數後得到**加法模型**，每個特徵各自貢獻，**沒有** $x_j x_l$ 這類**交互作用**項：
+
+$$
+\log\frac{\Pr(Y = k \mid X = x)}{\Pr(Y = K \mid X = x)}
+= \log\frac{\pi_k}{\pi_K} + \sum_{j=1}^{p} \log\frac{f_{kj}(x_j)}{f_{Kj}(x_j)} .
+$$
+
+**例：**$p = 3$ 個預測變數（$X_1$、$X_2$ 為連續型，$X_3$ 為類別型），$K = 2$，$\hat{\pi}_1 = \hat{\pi}_2 = 0.5$。
+在 $x^* = (0.4, 1.5, 1)$ 估計出的一維密度為：
+
+| | $\hat{f}_{k1}(0.4)$ | $\hat{f}_{k2}(1.5)$ | $\hat{f}_{k3}(1)$ | 乘積 |
+|:--|:--:|:--:|:--:|:--:|
+| 類別 1 | 0.368 | 0.484 | 0.226 | 0.0403 |
+| 類別 2 | 0.030 | 0.130 | 0.616 | 0.0024 |
+
+$$
+\Pr(Y = 1 \mid X = x^*) = \frac{0.5 \times 0.0403}{0.5 \times 0.0403 + 0.5 \times 0.0024} = 0.944 .
+$$
+
+::: {.callout-caution title="注意"}
+若某個類別型特徵的某個水準在第 $k$ 類中從未出現，其估計機率為 0，整個乘積就變成 0。因此 scikit-learn
+會在計數上加一個平滑常數（預設 `alpha = 1`，即拉普拉斯平滑）。
+:::
+
+## 何時使用單純貝氏
+
+- **$p$ 很大**（例如文字、基因）或**特徵型態混合**（連續與類別）時特別合適；**小** $N$ 即可，甚至 $p > N$ 也能用。
+- 類別內特徵**大致獨立**時，單純貝氏與 LDA 一樣好，而且在每類樣本數小於 $p$ 時最好。
+- 類別內特徵**高度相關**時表現不佳：誤差幾乎不隨 $n$ 增加而下降，這是假設錯誤造成的**偏差**，更多資料也無法消除；此時改用 LDA。
+- 交互作用重要時不適合（模型是加法形式）。
+- $N$ 很大而 $p$ 很小時，降低變異的好處不大，通常不會比 LDA／logistic 迴歸好。
+- 輸出的後驗機率常常過於極端（接近 0 或 1）。只用來分類時沒有影響；若要直接使用機率值（例如風險分數），應先檢查預測機率與實際發生比例是否一致。
+
+# 支援向量機（SVM）
+
+::: {.test-name}
+最大邊界、軟邊界與核函數
+:::
+
+**核心想法：**找出讓兩類之間間隔最寬的分隔面，它只由靠近邊界的支援向量決定，並以核函數處理非線性邊界。**用途：**分類（SVC）與迴歸（SVR）；適合已標準化的連續特徵、中小樣本，或特徵數遠多於樣本數的資料，例如基因表現、文字、影像分類。
+
+## 最大邊界與軟邊界
+
+設 $y_i \in \{-1, +1\}$，**分隔超平面** $f(x) = \beta_0 + \beta^\top x = 0$ 對所有 $i$ 滿足 $y_i f(x_i) > 0$。
+**最大邊界超平面**是離訓練點最遠的那一個——兩類之間最寬「板子」的中線；位在板子邊緣的點是**支援向量**，
+解**只**取決於它們。它要求類別可完全分開，且對單一觀測值非常敏感，容易過度配適。
+
+**支援向量分類器（軟邊界）**以**鬆弛變數** $\xi_i \ge 0$ 允許部分點違反邊界：
+
+$$
+\min_{\beta_0, \beta, \xi}\; \tfrac{1}{2}\lVert\beta\rVert^2 + C \sum_{i=1}^{n} \xi_i
+\quad \text{限制條件} \quad
+y_i(\beta_0 + \beta^\top x_i) \ge 1 - \xi_i, \;\; \xi_i \ge 0 .
+$$
+
+- $\xi_i = 0$：在邊界正確的一側；$0 < \xi_i \le 1$：在邊界之內；$\xi_i > 1$：**被誤分類**。邊界寬度為 $2/\lVert\beta\rVert$。
+- **支援向量**是落在邊界上、邊界內（或被誤分類）的點；深入自己類別內部的點不影響擬合。
+- **$C$ 的作用：**$C$ 是違反邊界的**成本**。$C$ 小 → 邊界寬、支援向量多、變異低；$C$ 大 → 邊界窄、支援向量少、
+較貼合訓練資料（變異高）。
+
+## 核函數
+
+解只透過**內積**依賴資料，決策函數為
+
+$$
+f(x) = \operatorname{sign}\Bigl(\sum_{i \in \mathcal{S}} y_i \alpha_i K(x_i, x) + b\Bigr),
+$$
+
+其中 $\mathcal{S}$ 是支援向量的集合（$\alpha_i > 0$，$0 \le \alpha_i \le C$）。把內積換成**核函數** $K$，
+就等於在擴大的（可能是無限維的）特徵空間中配適線性邊界，卻完全不需要計算那個空間——這就是**核技巧**（kernel trick）。
+
+| 核函數 | $K(x, x')$ | 參數（scikit-learn） | 適用情況 |
+|:--|:--|:--|:--|
+| 線性 | $\langle x, x' \rangle$ | `kernel="linear"` | $p$ 很大（$p \gg n$）、文字、基因 |
+| 多項式 | $(1 + \langle x, x' \rangle)^d$ | `kernel="poly", degree=d, coef0=1` | 已知邊界為低次多項式 |
+| 徑向（RBF、高斯） | $\exp(-\gamma \lVert x - x' \rVert^2)$ | `kernel="rbf", gamma=γ` | 一般非線性邊界的預設選擇 |
+
+核函數是一種**相似度**量測。使用 RBF 核時，離 $x$ 很遠的訓練點對 $f(x)$ 幾乎沒有貢獻——SVM 表現得像 KNN 一樣**局部**；
+$\gamma$ 越大，擬合越局部、越彎曲。
+
+## 多類別與支援向量迴歸
+
+- **多類別：**SVM 本質上是兩類方法，多類別時有兩種組合方式：**一對一**（one-versus-one）對每兩類訓練一個分類器，共 $K(K-1)/2$ 個，新觀測值分到得票最多的類別，`SVC` 採用這種方式；**一對多**（one-versus-rest）對每一類訓練「這一類對其他所有類」的分類器，共 $K$ 個，分到 $f_k(x)$ 最大的類別，分類器較少，但每個分類器的訓練資料兩類數量懸殊，`LinearSVC` 預設採用這種方式。
+- **支援向量迴歸（ε-SVR）：**目的是預測連續型反應變數，並可透過核函數處理非線性關係；相較最小平方迴歸，它對離群值較不敏感，且模型只由部分觀測值決定。它使用 **ε-不敏感損失** $V_\varepsilon(r) = \max(0, \lvert r \rvert - \varepsilon)$，$r$ 為殘差。預測值與實際值相差不到 $\varepsilon$ 時不計損失——等於在擬合曲線上下各 $\varepsilon$ 的範圍形成一條**ε 不敏感帶**（ε-tube），落在帶內的點不影響模型；超出的部分以線性計價，不像平方損失那樣容易被離群值拉動。只有落在帶的邊界上或帶外的點是支援向量；$\varepsilon$ 越大，帶越寬、支援向量越少，模型越精簡。參數：$C$、$\varepsilon$ 與核函數（`sklearn.svm.SVR`）。
+
+## 選擇 C 與核函數參數
+
+1. **縮放**特徵（`StandardScaler`，放在 `Pipeline` 中）：RBF 核使用歐氏距離，和 KNN 完全一樣。
+2. 先用 **RBF 核**；$p$ 很大（尤其 $p \gg n$）時用**線性核**——此時類別本來就容易分開，非線性核多出的彈性只會增加變異。
+3. 在 log₂ 尺度上對 $(C, \gamma)$ 做**網格搜尋**，以交叉驗證選出 CV 準確率最高者。常用網格：
+粗網格涵蓋 $C = 2^{-5}, 2^{-1}, \ldots, 2^{15}$、$\gamma = 2^{-15}, 2^{-11}, \ldots, 2^{1}, 2^{3}$（以 $2^4$ 為間隔，包含端點），再在最佳點附近以 $2^{\pm1}, 2^{\pm2}$ 加密。
+4. $C$ 與 $\gamma$ 要**一起**調：CV 曲面通常是一片沿對角線的高原（大 $C$ 配小 $\gamma$ 與中等 $C$ 配較大 $\gamma$ 效果相近），
+大 $C$ 且大 $\gamma$ 的角落則過度配適。若最佳點落在網格邊緣，應擴大網格。
+5. 類別**不平衡**時，為兩類設定不同的成本（`class_weight="balanced"`）。
+6. 迴歸（SVR）時 $C$、$\gamma$、$\varepsilon$ 一起以交叉驗證選擇。
+
+## 何時使用 SVM
+
+| 面向 | 適合 SVM | 不適合 SVM |
+|:--|:--|:--|
+| 目標 | 準確的**分類** | 需要機率或可解釋的效果 |
+| 邊界 | 非線性（RBF 核），或極高維度下的線性 | —（線性 SVM ≈ logistic 迴歸） |
+| 維度 | **$p$ 很大，甚至 $p \gg n$**，搭配線性核 | 非線性核搭配大量**無關**特徵 |
+| 樣本數 | 小到中等的 $n$ | $n$ 極大：訓練時間成長快於 $n$ 的線性 |
+| 類別重疊 | 類別分得很開 | 類別嚴重重疊（常偏好 logistic 迴歸） |
+| 特徵 | 連續型、已縮放 | 未縮放的特徵；大量類別型特徵 |
+| 離群值 | 遠在正確一側的點沒有影響 | 被誤分類的離群值仍以線性方式拉動 hinge loss |
+
+
+# 方法比較
+
+::: {.test-name}
+彈性、決策邊界與資料情況
+:::
+
+## 任務與輸出
+
+| 方法 | 分類 | 迴歸 | 輸出機率 |
+|:--|:--:|:--:|:--|
+| KNN | ✓ | ✓ | ✓（鄰居中各類的比例） |
+| LDA、QDA | ✓ | — | ✓ |
+| 單純貝氏 | ✓ | — | ✓（常過於極端） |
+| SVM | ✓（SVC） | ✓（SVR） | 只輸出類別；機率需另外校準 |
+
+LDA、QDA 與單純貝氏都是對「各類別內 $X$ 的分佈」建模，再用貝氏定理求後驗機率，因此只能用於分類；KNN 與 SVM 則分類與迴歸皆可。
+
+## 決策邊界與彈性
+
+**彈性**（flexibility）指模型能配適的函數或決策邊界形狀有多廣：彈性低的模型（例如線性邊界）形狀受限，彈性高的模型（例如 $k$ 小的 KNN）幾乎可以描出任何形狀。彈性越高，**偏差越低、變異越高**——訓練誤差一定下降，測試誤差則先降後升。彈性可以用「有效參數個數」大致衡量（例如 LDA 為 $(K-1)(p+1)$，KNN 約為 $N/k$），並由調整參數控制（$k$、$C$、$\gamma$）。資料少、雜訊大時應選彈性低的方法；資料多且真實邊界複雜時才值得用彈性高的方法。
+
+把每個分類方法寫成 log-odds $\log\{\Pr(Y = k \mid x) / \Pr(Y = K \mid x)\}$ 的模型：
+
+| 方法 | log-odds 的形式 | 彈性 |
+|:--|:--|:--|
+| LDA、logistic 迴歸 | 線性：$a_k + \sum_j b_{kj} x_j$ | 最低 |
+| 單純貝氏 | 加法：$a_k + \sum_j g_{kj}(x_j)$ | 中等（無交互作用） |
+| QDA | 二次：加上 $\sum_{j,l} c_{kjl}\, x_j x_l$ | 中到高 |
+| SVM，線性核 | 線性 $f(x)$（只輸出類別） | 低 |
+| SVM，RBF 核 | $\sum_{i \in \mathcal{S}} \alpha_i y_i K(x_i, x) + b$ | 高（由 $C$、$\gamma$ 決定） |
+| KNN | 無參數形式 | 最高（由 $k$ 決定） |
+
+
+## 選擇方法前要看的資料資訊
+
+拿到資料後，先計算下列資訊與敘述性統計，再對照下一節的表格選擇候選方法：
+
+| 資訊 | 怎麼看 | 對方法選擇的影響 |
+|:--|:--|:--|
+| 反應變數型態 | $Y$ 是類別或連續；類別數 $K$ | 連續 → KNN 迴歸、SVR；類別 → 全部分類方法 |
+| 樣本數 $n$、特徵數 $p$、$n/p$ | `X.shape` | $p \gg n$ → 線性 SVM、收縮 LDA、單純貝氏；$n$ 大 $p$ 小 → KNN、RBF SVM；$n$ 極大 → 避免 KNN、核 SVM |
+| 各類樣本數 $N_k$ 與比例 | `y.value_counts()` | 任一 $N_k \le p$ → QDA 無法估計；某類很稀有 → 調門檻、看精確率／AUC、`class_weight` |
+| 特徵型態 | 連續、類別（水準數）、計數 | 類別或混合型態多 → 單純貝氏；距離與核方法適合連續特徵 |
+| 尺度 | 各特徵標準差、範圍 | 差異大 → KNN、SVM 一定要標準化 |
+| 分佈形狀 | 偏態、峰態、離群值比例（$\lvert z \rvert > 3$）、直方圖、Q-Q 圖 | 嚴重偏態可先轉換（log）；離群值多 → LDA、QDA（高斯假設）不穩健 |
+| 特徵間相關 | 相關係數矩陣、最大 $\lvert r \rvert$ | 相關強 → 避免單純貝氏；$p$ 大且相關強 → 收縮 LDA |
+| 各類的散布是否相近 | 各類的標準差比、各類相關係數的差異、分組散布圖 | 相近 → LDA；明顯不同且 $n$ 夠 → QDA |
+| 邊界形狀 | 由各方法正式交叉驗證的比較結果判斷 | 線性方法與彈性高的方法表現相近 → 線性邊界已足夠；KNN、RBF SVM 明顯較好 → 邊界不規則；全都不比 null rate 好 → 訊號很弱 |
+| 迴歸：$y$ 對 $x$ 的形狀與雜訊 | 散布圖、平滑曲線；是否有趨勢、週期 | KNN 迴歸、SVR 與線性迴歸基準比較；非線性且 $p$ 小 → KNN 迴歸；離群值多 → SVR |
+| 資料順序 | 是否為時間或空間資料 | 交叉驗證要依時間切分，排序過的資料要先打亂 |
+| 缺失值 | 各特徵缺失比例 | 這些方法大多不接受缺失值，先補值 |
+
+## 依資料情況選擇方法
+
+| 真實邊界／資料情況 | 較佳方法 | 說明 |
+|:--|:--|:--|
+| **線性**，各類大致高斯 | LDA、logistic 迴歸 | KNN 多出的變異沒有被較低的偏差抵銷 |
+| 線性，但分佈厚尾（有離群值） | Logistic 迴歸 | LDA 接近；QDA 變差 |
+| **二次**（各類共變異不同） | **QDA** | $N$ 要相對 $K p^2/2$ 夠大 |
+| **複雜的非線性**，$n$ 大、$p$ 小 | **以 CV 選 $k$ 的 KNN**、RBF SVM | $k = 1$ 通常最差 |
+| 非線性，**每類樣本極少** | 單純貝氏 | 其他方法變異太大 |
+| **$p \gg n$**（基因、文字） | 線性 SVM、收縮 LDA、單純貝氏 | 非線性核只增加變異；特徵高度相關時單純貝氏變差 |
+
+**KNN 與線性迴歸。** 真實的 $f$ 是線性時線性迴歸較好；$f$ 是非線性且 $p$ 很小時 KNN 較好，但加入與 $Y$ 無關的變數時 KNN 迅速變差，每個預測變數分到的觀測值很少時有母數方法通常較好。
+
+**SVM 與 logistic 迴歸。** 兩者都配適線性邊界，結果常常非常相近；類別分得很開時 SVM 往往較好，類別重疊較多時 logistic 迴歸常較好，而且 logistic 迴歸提供機率。
+
+**LDA 與 logistic 迴歸。** 兩者的 log-odds 都是線性的，差別在係數的估計方式：LDA 最大化 $(X, Y)$ 的聯合概似並假設 $X$ 為高斯、共同 $\Sigma$，假設成立時較有效率，類別可完全分開時仍有定義；logistic 迴歸只用 $Y \mid X$ 的條件概似，對 $X$ 的分佈不做假設，較穩健。實務上兩者結果通常非常相近。
+
+**高維資料（$p \gg n$）。** $p \gg n$ 時應選擇**充分正規化的線性**方法。
+
+# 決策樹用的總結
+
+::: {.test-name}
+何時選擇 KNN、LDA、QDA、單純貝氏或 SVM
+:::
+
+## 決策流程圖
+
+圖 1 是拿到資料後的整體流程；Y 為類別時，依圖 2 選擇分類方法。藍色菱形為判斷、綠色為建議的方法、橘色為需要與使用者確認的步驟。
+
+```{mermaid}
+%%| fig-cap: "圖 1：分析主流程"
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "Noto Sans TC, Microsoft JhengHei, sans-serif", "fontSize": "14px", "lineColor": "#8A96A3", "edgeLabelBackground": "#FFFFFF", "primaryTextColor": "#24303A"}, "flowchart": {"curve": "basis", "nodeSpacing": 30, "rankSpacing": 40}}}%%
+flowchart TD
+ A([上傳 CSV 或 Excel]) --> B{已指定 Y 與 X?}
+ B -- 否 --> C[詢問使用者選定欄位]
+ C --> B
+ B -- 是 --> D[檢查缺失比例、資料類型、n、p、n/p]
+ D --> D1[列出缺失與前處理建議：補值、類別編碼、文字轉詞頻]
+ D1 --> E{使用者確認前處理方案?}
+ E -- 否 --> F[調整方案並再次確認]
+ F --> D1
+ E -- 是 --> E1[執行已確認的前處理]
+ E1 --> E2[EDA：描述統計、直方圖、箱形圖、相關係數熱圖]
+ E2 --> E3[資料概況：各類樣本數與比例、各類散布、特徵間相關、尺度差異]
+ E3 --> G{Y 為連續或類別?}
+ G -- 連續 --> R3[KNN 迴歸、SVR（與線性迴歸基準比較）]
+ G -- 類別 --> S[進入分類方法選擇（圖 2）]
+ S --> T{有稀有類別?}
+ T -- 是 --> T1[class_weight 或調整門檻；看敏感度、精確率、AUC]
+ T -- 否 --> L
+ T1 --> L
+ R3 --> L{使用者確認候選模型?}
+ L -- 否 --> M[說明替代方案並等待確認]
+ M --> L
+ L -- 是 --> N[Pipeline 內標準化；交叉驗證調參；保留測試集]
+ N --> N1[與基準比較：多數類別（分類）、線性迴歸（迴歸）]
+ N1 --> O{同意調整門檻、參數或更換方法?}
+ O -- 否 --> P[保留結果並說明限制]
+ O -- 是 --> Q[交叉驗證重新調參並比較]
+ Q --> Z([產出分析報告與可重現程式碼])
+ P --> Z
+ class A,D,D1,E1,E2,E3,N,N1,Q,P,Z,S proc
+ class B,E,G,T,L,O dec
+ class R3,T1 method
+ class C,F,M user
+ classDef proc fill:#F6F8FA,stroke:#A0AAB4,color:#24303A
+ classDef dec fill:#EAF2FB,stroke:#4C78A8,color:#1F3A5F
+ classDef method fill:#EAF5EC,stroke:#4E9A5B,color:#1E4D2B
+ classDef user fill:#FDF4E7,stroke:#D49A4A,color:#5A3A12
+```
+
+```{mermaid}
+%%| fig-cap: "圖 2：分類方法建議"
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "Noto Sans TC, Microsoft JhengHei, sans-serif", "fontSize": "14px", "lineColor": "#8A96A3", "edgeLabelBackground": "#FFFFFF", "primaryTextColor": "#24303A"}, "flowchart": {"curve": "basis", "nodeSpacing": 30, "rankSpacing": 40}}}%%
+flowchart TD
+ A([Y 為類別]) --> B{特徵型態?}
+ B -- 文字或字詞次數 --> B1[建議：多項單純貝氏、線性核 SVM]
+ B -- 類別型為主 --> B2[建議：單純貝氏（各特徵用適合的一維分佈）]
+ B -- 連續型為主 --> C{p 與 n 的關係?}
+ C -- p 接近或大於 n --> C1{特徵間高度相關?}
+ C1 -- 是 --> C2[建議：收縮 LDA、線性核 SVM]
+ C1 -- 否 --> C3[建議：收縮 LDA、線性核 SVM、單純貝氏]
+ C -- n 遠大於 p --> D{每類樣本數遠大於 p?}
+ D -- 否 --> D1[建議：LDA、單純貝氏]
+ D -- 是 --> E{p 小且 n 遠大於 p?}
+ E -- 是 --> E1[建議：LDA、QDA、KNN、RBF 核 SVM]
+ E -- 否 --> E2[建議：LDA、QDA、RBF 核 SVM]
+ C2 & C3 & D1 & E1 & E2 & B1 & B2 --> Z[建議的方法預設勾選，以交叉驗證比較；其他可行方法可加選]
+ class A,Z proc
+ class B,C,C1,D,E dec
+ class B1,B2,C2,C3,D1,E1,E2 method
+ classDef proc fill:#F6F8FA,stroke:#A0AAB4,color:#24303A
+ classDef dec fill:#EAF2FB,stroke:#4C78A8,color:#1F3A5F
+ classDef method fill:#EAF5EC,stroke:#4E9A5B,color:#1E4D2B
+```
+
+圖中為建議優先比較的方法；數學上無法估計或計算量過大的方法（例如某類每折樣本數不超過 p 時的 QDA、訓練資料超過 20,000 筆時的核 SVM）由程式另外剔除並說明原因。特徵間高度相關時，各分支都不建議單純貝氏。
+
+## 分析流程
+
+拿到一份新資料時，依序執行：
+
+1. **確認任務：**分類或迴歸；目標是預測準確還是解釋效果。
+2. **檢查資料：**依第 5 章「選擇方法前要看的資料資訊」計算 $N$、$p$（編碼後進入模型的欄位數）、$N/p$、特徵型態、各類別比例、每折最小類別筆數、分佈形狀、特徵間相關與各類散布是否相近。
+3. **依流程圖列出建議方法**，其他可行方法視需要加選；加入多數類別或線性迴歸基準。
+4. **前處理：**數值特徵標準化（KNN、SVM 必要），類別特徵編碼；所有前處理放進 `Pipeline`，避免資訊從驗證折洩漏。
+5. **切分資料：**保留測試集；分類時分層抽樣（`stratify=y`）；資料有時間或排序結構時，交叉驗證要打亂或依時間切分。
+6. **以交叉驗證調參數：**
+
+| 方法 | 主要參數 | 建議搜尋範圍 |
+|:--|:--|:--|
+| KNN | $k$ | 1 到約 $\sqrt{N}$ 的奇數 |
+| LDA | 收縮（$p$ 接近 $N$，即 $N/p < 10$ 時） | `shrinkage="auto"` |
+| QDA | `reg_param` | 0 到 1 |
+| 單純貝氏 | 每個特徵的密度型態、平滑參數 `alpha` | 依變數型態決定 |
+| SVM（RBF） | $C$、$\gamma$ | 粗網格 $C = 2^{-5}, 2^{-1}, \ldots, 2^{15}$；$\gamma = 2^{-15}, 2^{-11}, \ldots, 2^{1}, 2^{3}$（以 $2^4$ 為間隔，包含端點）；再在最佳點附近以 $2^{\pm1}, 2^{\pm2}$ 加密 |
+| SVR | $C$、$\gamma$、$\varepsilon$ | 同上；$\varepsilon$ 約為雜訊標準差的 0.1–1 倍 |
+
+7. **評估：**在測試集上報告；與基準比較；不平衡資料看 AUC、敏感度、精確率並調整門檻；需要機率時檢查校準。
+8. **報告：**最終方法、參數、測試表現，以及選擇的理由（資料特性對應到哪一條決策規則）。
+
+## 參考文獻
+
+Bishop, C. M. (2006). *Pattern Recognition and Machine Learning*. Springer.
+
+Chang, C.-C., & Lin, C.-J. (2011). LIBSVM: A library for support vector machines. *ACM Transactions on Intelligent
+Systems and Technology, 2*(3), 27:1–27:27.
+
+Fisher, R. A. (1936). The use of multiple measurements in taxonomic problems. *Annals of Eugenics, 7*(2), 179–188.
+
+Hastie, T., Tibshirani, R., & Friedman, J. (2009). *The Elements of Statistical Learning* (2nd ed.). Springer.
+
+Hsu, C.-W., Chang, C.-C., & Lin, C.-J. (2003). *A practical guide to support vector classification*. Technical report,
+National Taiwan University.
+
+James, G., Witten, D., Hastie, T., Tibshirani, R., & Taylor, J. (2023). *An Introduction to Statistical Learning: with
+Applications in Python*. Springer.
+
+Pedregosa, F., et al. (2011). Scikit-learn: Machine learning in Python. *Journal of Machine Learning Research, 12*,
+2825–2830.

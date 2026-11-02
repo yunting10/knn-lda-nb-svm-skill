@@ -1,0 +1,675 @@
+---
+title: "KNN, Discriminant Analysis, Naive Bayes and Support Vector Machines"
+subtitle: "Supervised Learning: Distance, Kernel and Probabilistic Models"
+lang: en
+format:
+  html:                        # report (HTML), the default output
+    theme: cosmo               # page theme: also flatly, lumen, journal, litera…
+    toc: true                  # table of contents on the side
+    toc-title: "Contents"
+    toc-location: left
+    toc-depth: 3
+    toc-expand: true
+    number-sections: true      # automatic section numbers
+    number-depth: 3
+    section-divs: true
+    code-tools: true           # show / hide code button at the top right
+    code-fold: false           # set true to fold code by default
+    embed-resources: true      # one self-contained .html file
+    smooth-scroll: true
+    fig-align: center
+    tbl-cap-location: bottom
+    html-math-method: mathjax
+    css: report.css            # delete this line if the file is absent
+  beamer:                      # slide version; for the report only use
+    theme: Madrid              #    quarto render <file>.qmd --to html
+    colortheme: default
+    fonttheme: professionalfonts
+    aspectratio: 169          # 16:9 widescreen; 43 for 4:3
+    navigation: horizontal
+    section-titles: true       # a section slide for every level-1 heading
+    toc: true                  # outline slide
+    toc-title: "Outline"
+    slide-level: 2             # one slide per ## heading
+    pdf-engine: xelatex        # needed for Times New Roman
+    keep-tex: false            # set true to keep the .tex for debugging
+    incremental: false         # set true to reveal list items one by one
+    header-includes: |
+      \usepackage{fontspec}
+      \setmainfont{Times New Roman}
+      \usepackage{amsmath, amssymb}
+      \setbeamertemplate{caption}[numbered]
+jupyter: python3                 # run the code with Python (Jupyter)
+execute:
+  echo: true       # show code; set false to show results only
+  warning: false
+  message: false
+  freeze: auto
+---
+
+# K-Nearest Neighbours (KNN)
+
+::: {.test-name}
+Estimating Conditional Probabilities and Means by Neighbourhood Votes and Averages
+:::
+
+**Core idea:** vote (classification) or average (regression) over the $k$ training points nearest to a new observation. **Use:** both classification and regression; suits data with few features, many observations and an irregular decision boundary, e.g. predicting from similar cases or recognising handwritten digits.
+
+## Idea and algorithm
+
+**Error rate.** The error rate of a classifier is the proportion of wrong predictions, $\frac{1}{n}\sum_{i=1}^{n} I(y_i \ne \hat{y}_i)$. For regression the mean squared error $\frac{1}{n}\sum_{i=1}^{n}(y_i - \hat{f}(x_i))^2$ is used.
+
+The test error rate is minimised by the **Bayes classifier**: assign $x_0$ to the class $j$ with the largest conditional
+probability $\Pr(Y = j \mid X = x_0)$. For real data this distribution is unknown, so the Bayes classifier is an
+unattainable gold standard. **KNN estimates it locally.** Let $\mathcal{N}_k(x_0)$ be the $k$ training points closest to $x_0$:
+
+$$
+\widehat{\Pr}(Y = j \mid X = x_0) = \frac{1}{k} \sum_{i \in \mathcal{N}_k(x_0)} I(y_i = j),
+\qquad
+\hat{f}(x_0) = \frac{1}{k}\sum_{x_i \in \mathcal{N}_k(x_0)} y_i .
+$$
+
+Classification takes the class with the largest estimated probability (majority vote); regression averages the
+neighbours’ responses, estimating $E(Y \mid X = x_0)$. Two approximations are made: the expectation is replaced by a
+**sample average**, and conditioning at a point is relaxed to conditioning on a **neighbourhood** of that point.
+
+| | KNN classification | KNN regression |
+|:--|:--|:--|
+| Response $Y$ | Qualitative | Quantitative |
+| Prediction at $x_0$ | Majority class in $\mathcal{N}_k(x_0)$ | Average of $y_i$ in $\mathcal{N}_k(x_0)$ |
+| Target | $\Pr(Y = j \mid X = x_0)$ | $E(Y \mid X = x_0)$ |
+| scikit-learn | `KNeighborsClassifier` | `KNeighborsRegressor` |
+
+**Algorithm.** (1) Standardise each feature to mean 0 and variance 1; (2) compute the Euclidean distance
+$d_i = \lVert x_i - x_0 \rVert$ from $x_0$ to every training point; (3) keep the $k$ nearest; (4) vote
+(classification) or average (regression).
+
+::: {.callout-caution title="Caution"}
+KNN works entirely through distances, so **the scale of the variables matters**: a variable measured in large units
+dominates the distance. Standardise first (`StandardScaler`).
+:::
+
+## Bias–variance and the choice of k
+
+With $Y = f(X) + \varepsilon$, $\operatorname{Var}(\varepsilon) = \sigma^2_\varepsilon$ and the training inputs held
+fixed, the expected prediction error of KNN regression at $x_0$ is
+
+$$
+\operatorname{Err}(x_0)
+= \sigma^2_\varepsilon
++ \Bigl[f(x_0) - \frac{1}{k}\sum_{\ell=1}^{k} f(x_{(\ell)})\Bigr]^2
++ \frac{\sigma^2_\varepsilon}{k},
+$$
+
+i.e. **irreducible error + squared bias + variance**, where $x_{(\ell)}$ is the $\ell$-th nearest neighbour of $x_0$.
+The variance $\sigma^2_\varepsilon / k$ falls as $k$ grows; the bias usually rises, as the neighbourhood reaches further
+from $x_0$. Complexity is inversely related to $k$; the **effective number of parameters is about $N/k$**.
+
+| | Small $k$ (e.g. $k = 1$) | Large $k$ |
+|:--|:--|:--|
+| Boundary / fit | Jagged, irregular | Smooth; with $k = N$ every prediction is the majority class |
+| Effective parameters $N/k$ | Many | Few |
+| Bias / variance | Low bias, **high variance** | **High bias**, low variance |
+| Training error | $0$ for $k = 1$ | Higher |
+| Risk | Overfitting | Underfitting |
+
+**Choosing k in practice:**
+
+1. **Standardise** the features inside a `Pipeline`, so that each fold computes the scaling from its own training part.
+2. Compute the **10-fold cross-validation error** over a set of $k$ (the training error cannot be used: it is always 0
+for $k = 1$).
+3. Choose the $k$ with the smallest CV error; the CV curve is usually flat near its minimum, and values of $k$ in the
+flat region perform alike. With two classes an **odd** $k$ avoids ties. Do not use $k = 1$ without choosing it: it has
+the highest variance and is usually among the worst choices.
+4. Compare with the **null rate** (the error of always predicting the majority class), and report the error on a
+separate test set at the end.
+5. When one class is rare, judge by **precision** and recall, not overall error.
+
+## When to use KNN
+
+| Aspect | KNN is a good candidate | KNN is a poor candidate |
+|:--|:--|:--|
+| Goal | **Prediction** | Inference: which variables matter, $p$-values |
+| Relationship / boundary | **Highly irregular**, non-linear; many “prototypes” per class | Linear or nearly linear |
+| Sample size vs predictors | **$N \gg p$** | Few observations per predictor |
+| Number of predictors | **Small $p$** (a few informative features) | Large $p$, many irrelevant features |
+| Feature types | Quantitative, can be standardised | Many categorical features |
+| Prediction cost | Moderate $N$ | Huge $N$ with fast real-time predictions needed (the whole training set must be stored and searched) |
+| Classes | Balanced, or judged by precision / recall | Rare class judged by overall error |
+
+
+# Linear and Quadratic Discriminant Analysis (LDA, QDA)
+
+::: {.test-name}
+Gaussian Generative Classifiers
+:::
+
+**Core idea:** assume the data in each class follow a multivariate normal distribution and obtain the posterior by Bayes’ theorem; LDA assumes a common covariance and gets a linear boundary, QDA allows class-specific covariances and gets a quadratic boundary. **Use:** classification only; suits quantitative features with roughly elliptical classes, e.g. medical diagnostic measurements, credit scoring, species classification; LDA can also project multi-class data to low dimension for inspection.
+
+## The generative approach
+
+Logistic regression models $\Pr(Y = k \mid X = x)$ **directly**. A *generative* classifier instead models the
+distribution of $X$ **within each class** and turns it around with Bayes’ theorem:
+
+$$
+p_k(x) = \Pr(Y = k \mid X = x)
+= \frac{\pi_k f_k(x)}{\sum_{l=1}^{K} \pi_l f_l(x)},
+$$
+
+where $\pi_k$ is the **prior** probability of class $k$ and $f_k(x)$ the **class-conditional density** of $X$.
+Estimating $\pi_k$ is easy (class proportions); estimating a $p$-dimensional density $f_k$ is hard, so simplifying
+assumptions are needed:
+
+| Method | Assumption on $f_k(x)$ | Decision boundary |
+|:--|:--|:--|
+| **LDA** | $N(\mu_k, \Sigma)$ — **common** covariance matrix | Linear |
+| **QDA** | $N(\mu_k, \Sigma_k)$ — **class-specific** covariance matrix | Quadratic |
+| Naive Bayes | Features independent within each class | Additive (often non-linear) |
+| KNN | Non-parametric local density estimate | Any shape |
+
+## Discriminant functions of LDA and QDA
+
+**LDA.** Assume $X \mid Y = k \sim N(\mu_k, \Sigma)$ with the same $\Sigma$ in every class. Taking logs in Bayes’
+theorem, the quadratic terms cancel, and $x$ is assigned to the class with the largest **linear discriminant function**:
+
+$$
+\delta_k(x) = x^\top \Sigma^{-1} \mu_k - \tfrac{1}{2}\, \mu_k^\top \Sigma^{-1} \mu_k + \log \pi_k ,
+$$
+
+with estimates (the maximum-likelihood solution)
+
+$$
+\hat{\pi}_k = \frac{N_k}{N}, \qquad
+\hat{\mu}_k = \frac{1}{N_k}\sum_{y_i = k} x_i, \qquad
+\hat{\Sigma} = \frac{1}{N - K}\sum_{k=1}^{K}\sum_{y_i = k}(x_i - \hat{\mu}_k)(x_i - \hat{\mu}_k)^\top .
+$$
+
+**QDA.** Assume $X \mid Y = k \sim N(\mu_k, \Sigma_k)$ — each class has its own covariance matrix. The quadratic terms
+no longer cancel and the boundaries are **quadratic** surfaces:
+
+$$
+\delta_k(x) = -\tfrac{1}{2}(x - \mu_k)^\top \Sigma_k^{-1}(x - \mu_k)
+- \tfrac{1}{2}\log\lvert\Sigma_k\rvert + \log \pi_k .
+$$
+
+| Number of parameters | LDA | QDA |
+|:--|:--|:--|
+| Covariance parameters | $p(p+1)/2$ (one $\Sigma$) | $K\,p(p+1)/2$ (one $\Sigma_k$ per class) |
+| Parameters in the decision rule | $(K-1)(p+1)$ | $(K-1)\{p(p+3)/2 + 1\}$ |
+| Example: $K = 2$, $p = 50$ | 51 | 1,326 |
+
+**The bias–variance trade-off.**
+
+- **LDA** is much less flexible and so has **lower variance**; if the common-covariance assumption is badly wrong it has
+**high bias**.
+- Use **QDA** when the training set is **very large** (variance is not a concern) or a common covariance is **clearly
+untenable**.
+- Use **LDA** when there are relatively few training observations and reducing variance matters most. The covariance
+parameters of QDA grow like $K p^2 / 2$; if a class has $N_k \le p$ observations, $\hat{\Sigma}_k$ is singular and QDA
+cannot be fitted.
+
+## Python code — LDA and QDA with a linear or a quadratic boundary
+
+**Purpose:** see when QDA is worth it — it only helps when the classes really have different covariance structures (a
+curved boundary).
+
+Two classes, $p = 2$, means $(-1, 0)$ and $(1, 0)$, unit variances, 50 training observations per class. (A) correlation
+0.7 in both classes: the true (Bayes) boundary is **linear**; (B) correlations 0.7 and −0.7: the true boundary is **quadratic**.
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import multivariate_normal as mvn
+from sklearn.discriminant_analysis import (
+    LinearDiscriminantAnalysis as LDA, QuadraticDiscriminantAnalysis as QDA)
+
+rng = np.random.default_rng(3)
+mu = [np.array([-1, 0]), np.array([1, 0])]
+cov = lambda r: np.array([[1, r], [r, 1]])
+settings = {"A: common covariance": [cov(0.7), cov(0.7)],
+            "B: different covariances": [cov(0.7), cov(-0.7)]}
+
+def sample(S, n):                                       # n observations per class
+    X = np.vstack([rng.multivariate_normal(mu[k], S[k], n) for k in (0, 1)])
+    return X, np.repeat([0, 1], n)
+
+xx, yy = np.meshgrid(np.linspace(-4, 4, 300), np.linspace(-4, 4, 300))
+grid = np.c_[xx.ravel(), yy.ravel()]
+fig, axes = plt.subplots(1, 2, figsize=(10, 4.3))
+for ax, (name, S) in zip(axes, settings.items()):
+    X, y = sample(S, 50)
+    Xt, yt = sample(S, 5000)
+    bayes = lambda Z: (mvn.pdf(Z, mu[1], S[1]) > mvn.pdf(Z, mu[0], S[0])).astype(int)
+    errs = {"Bayes": np.mean(bayes(Xt) != yt)}
+    for lab, m in [("LDA", LDA()), ("QDA", QDA())]:
+        errs[lab] = 1 - m.fit(X, y).score(Xt, yt)
+        ax.contour(xx, yy, m.predict(grid).reshape(xx.shape), levels=[0.5],
+                   colors="black" if lab == "LDA" else "#55a868",
+                   linestyles=":" if lab == "LDA" else "-")
+    ax.contour(xx, yy, bayes(grid).reshape(xx.shape), levels=[0.5],
+               colors="#8172b3", linestyles="--")
+    ax.scatter(*X.T, c=np.where(y == 0, "#dd8452", "#4c72b0"), s=12)
+    ax.set_title(name, fontsize=10)
+    print(f"{name:26s} test error: " +
+          ", ".join(f"{k} = {v:.3f}" for k, v in errs.items()))
+axes[0].plot([], [], "--", color="#8172b3", label="Bayes")
+axes[0].plot([], [], ":", color="black", label="LDA")
+axes[0].plot([], [], "-", color="#55a868", label="QDA")
+axes[0].legend(frameon=False, loc="lower left")
+plt.tight_layout(); plt.show()
+```
+
+::: {.callout-note title="Note"}
+**(A)** The true boundary is linear: LDA and QDA are both close to the Bayes error (0.083 vs 0.080) and QDA’s extra
+flexibility buys nothing. **(B)** The true boundary is quadratic: QDA (0.141) is close to the Bayes error (0.136), while
+LDA’s straight line costs more (0.160).
+:::
+
+## Fisher’s linear discriminant
+
+Fisher’s view reaches LDA **without** the Gaussian assumption: find the direction $w$ that maximises the
+**between-class** variance relative to the **within-class** variance:
+
+$$
+J(w) = \frac{w^\top S_B\, w}{w^\top S_W\, w},
+\qquad
+\text{two classes: } w \propto S_W^{-1}(m_2 - m_1).
+$$
+
+Here $m_1, m_2$ are the sample mean vectors of classes 1 and 2; $S_B$ is the between-class scatter matrix, which for two
+classes is $(m_2 - m_1)(m_2 - m_1)^\top$; and $S_W = \sum_k \sum_{i \in k} (x_i - m_k)(x_i - m_k)^\top$ is the
+within-class scatter matrix.
+
+- Projecting onto the line joining the means alone can leave the classes overlapping; dividing by the within-class
+scatter removes most of the overlap. When the features are correlated within classes, the projections of the two classes
+onto the line joining the means overlap heavily; taking the within-class scatter into account projects onto a different
+direction instead, and the overlap shrinks.
+- The $K$ class centroids span at most **$K - 1$ dimensions**, so LDA gives at most $K - 1$ discriminant directions
+(*canonical variates*), which can be used to project the data to a low-dimensional space and see how well the classes separate.
+
+## Imbalanced data: adjusting the posterior threshold
+
+- **What imbalanced data are:** one class has a very low share, e.g. defaults or a rare disease make up only a small part
+of all observations.
+- **Effect:** at threshold 0.5 the majority class dominates the predictions; the overall accuracy looks high, but most of
+the rare class is missed, so overall accuracy does not reflect how well the model performs.
+- **Remedies:** adjust the posterior threshold (LDA and QDA output posterior probabilities, so the threshold need not be
+0.5); weight the classes (`class_weight="balanced"`); evaluate by sensitivity, precision, AUC or balanced accuracy
+instead; use stratified sampling when splitting the data.
+
+The best threshold depends on the costs of the two kinds of error.
+
+## When to use LDA and QDA
+
+| Aspect | LDA | QDA |
+|:--|:--|:--|
+| Class shape | Roughly Gaussian, **similar covariances** | Roughly Gaussian, **different covariances** |
+| Decision boundary | Linear | Quadratic ($x_j x_l$ interactions matter) |
+| Sample size | **Small to moderate** $N$ suffices | Needs $N$ **large** relative to $K p^2 / 2$ |
+| Dimension | Moderate $p$; shrinkage LDA when $p$ is near $N$ ($N/p < 10$) | Small $p$ |
+| Feature types | Quantitative (a few binary variables usually fine) | Quantitative |
+| Number of classes | Multi-class; also gives a $\le K-1$-dimensional projection | Multi-class |
+| Outliers | Not robust (Gaussian MLE) | Not robust |
+
+- LDA and QDA need not wait for truly Gaussian data: whenever the data can support only simple boundaries such as linear
+or quadratic ones, their estimates are stable.
+- So there is no need to pass a multivariate normality or homogeneity-of-covariance test first (Box’s M test, for example,
+almost always rejects in large samples); compare by cross-validation. Scatter plots or the covariance matrices of each
+class help decide which to try first.
+- When $p$ is close to $N$ (this skill uses the threshold $N/p < 10$) even the pooled $\hat{\Sigma}$ is unstable — use **shrinkage LDA**
+(`LDA(solver="lsqr", shrinkage="auto")`) or naive Bayes.
+
+# Naive Bayes
+
+::: {.test-name}
+Conditional Independence within Classes
+:::
+
+**Core idea:** assume the features are independent within each class, so the multivariate density splits into a product of one-dimensional densities. **Use:** classification only; suits data with very many features (text, genes), few observations, or mixed quantitative and categorical features, e.g. spam and news-topic classification; also a common fast baseline.
+
+## Model and assumption
+
+LDA and QDA make the hard problem of estimating a $p$-dimensional density $f_k(x)$ tractable by assuming Gaussians.
+Naive Bayes instead assumes that **within the $k$-th class, the $p$ predictors are independent**:
+
+$$
+f_k(x) = f_{k1}(x_1) \times f_{k2}(x_2) \times \cdots \times f_{kp}(x_p),
+\qquad
+\Pr(Y = k \mid X = x) =
+\frac{\pi_k \prod_{j=1}^{p} f_{kj}(x_j)}{\sum_{l=1}^{K} \pi_l \prod_{j=1}^{p} f_{lj}(x_j)} .
+$$
+
+- One $p$-dimensional density becomes **$p$ one-dimensional densities**, each estimated separately — no covariances to estimate.
+- Each one-dimensional density can be chosen to suit the variable type: Gaussian for quantitative features
+(`GaussianNB`), level proportions for categorical ones (`CategoricalNB`), multinomial for counts (`MultinomialNB`) —
+so **mixed feature types** are handled naturally.
+- Taking logs gives an **additive model**: each feature contributes on its own, with **no** $x_j x_l$ **interaction** terms:
+
+$$
+\log\frac{\Pr(Y = k \mid X = x)}{\Pr(Y = K \mid X = x)}
+= \log\frac{\pi_k}{\pi_K} + \sum_{j=1}^{p} \log\frac{f_{kj}(x_j)}{f_{Kj}(x_j)} .
+$$
+
+**Example:** $p = 3$ predictors ($X_1$, $X_2$ quantitative, $X_3$ qualitative), $K = 2$, $\hat{\pi}_1 = \hat{\pi}_2 = 0.5$. The
+estimated one-dimensional densities at $x^* = (0.4, 1.5, 1)$ are:
+
+| | $\hat{f}_{k1}(0.4)$ | $\hat{f}_{k2}(1.5)$ | $\hat{f}_{k3}(1)$ | Product |
+|:--|:--:|:--:|:--:|:--:|
+| Class 1 | 0.368 | 0.484 | 0.226 | 0.0403 |
+| Class 2 | 0.030 | 0.130 | 0.616 | 0.0024 |
+
+$$
+\Pr(Y = 1 \mid X = x^*) = \frac{0.5 \times 0.0403}{0.5 \times 0.0403 + 0.5 \times 0.0024} = 0.944 .
+$$
+
+::: {.callout-caution title="Caution"}
+If a level of a categorical feature never occurs in class $k$, its estimated probability is 0 and the whole product
+becomes 0. scikit-learn therefore adds a smoothing constant to the counts (default `alpha = 1`, Laplace smoothing).
+:::
+
+## When to use naive Bayes
+
+- Especially suited to **very large $p$** (text, genes) or **mixed feature types** (quantitative and categorical); a
+**small** $N$ suffices, even $p > N$.
+- When features are **roughly independent** within classes, naive Bayes does as well as LDA, and best of all when each
+class has fewer observations than $p$.
+- When features are **strongly correlated** within classes it performs poorly: its error hardly falls as $n$ grows —
+**bias** from the wrong assumption, which more data cannot remove; use LDA instead.
+- Not suited when interactions matter (the model is additive).
+- With large $N$ and small $p$ the variance reduction buys little, and it is usually no better than LDA / logistic regression.
+- Its posterior probabilities are often too extreme (close to 0 or 1). This does not matter for classification; if the
+probabilities themselves are used (e.g. as risk scores), first check that predicted probabilities match observed frequencies.
+
+# Support Vector Machines (SVM)
+
+::: {.test-name}
+Maximal Margin, Soft Margin and Kernels
+:::
+
+**Core idea:** find the separating surface with the widest gap between the classes; it is determined only by the support vectors near the boundary, and kernels handle non-linear boundaries. **Use:** classification (SVC) and regression (SVR); suits standardised quantitative features, small-to-medium samples, or data with far more features than observations, e.g. gene expression, text and image classification.
+
+## Maximal and soft margins
+
+With $y_i \in \{-1, +1\}$, a **separating hyperplane** $f(x) = \beta_0 + \beta^\top x = 0$ satisfies $y_i f(x_i) > 0$
+for all $i$. The **maximal margin hyperplane** is the one farthest from the training points — the mid-line of the widest
+“slab” between the classes; the points on the edge of the slab are the **support vectors**, and the solution depends
+**only** on them. It requires separable classes and is very sensitive to single observations, so it overfits easily.
+
+The **support vector classifier (soft margin)** allows some points to violate the margin through **slack variables**
+$\xi_i \ge 0$:
+
+$$
+\min_{\beta_0, \beta, \xi}\; \tfrac{1}{2}\lVert\beta\rVert^2 + C \sum_{i=1}^{n} \xi_i
+\quad \text{subject to} \quad
+y_i(\beta_0 + \beta^\top x_i) \ge 1 - \xi_i, \;\; \xi_i \ge 0 .
+$$
+
+- $\xi_i = 0$: on the correct side of the margin; $0 < \xi_i \le 1$: inside the margin; $\xi_i > 1$: **misclassified**.
+The margin width is $2/\lVert\beta\rVert$.
+- The **support vectors** are the points on or inside the margin (or misclassified); points deep inside their own class
+do not affect the fit.
+- **Role of $C$:** $C$ is the **cost** of margin violations. Small $C$ → wide margin, many support vectors, low variance;
+large $C$ → narrow margin, few support vectors, closer fit to the training data (high variance).
+
+## Kernels
+
+The solution depends on the data only through **inner products**, and the decision function is
+
+$$
+f(x) = \operatorname{sign}\Bigl(\sum_{i \in \mathcal{S}} y_i \alpha_i K(x_i, x) + b\Bigr),
+$$
+
+where $\mathcal{S}$ is the set of support vectors ($\alpha_i > 0$, $0 \le \alpha_i \le C$). Replacing the inner product
+by a **kernel** $K$ fits a linear boundary in an enlarged (possibly infinite-dimensional) feature space without ever
+computing that space — the **kernel trick**.
+
+| Kernel | $K(x, x')$ | Arguments (scikit-learn) | When to use |
+|:--|:--|:--|:--|
+| Linear | $\langle x, x' \rangle$ | `kernel="linear"` | Very large $p$ ($p \gg n$), text, genes |
+| Polynomial | $(1 + \langle x, x' \rangle)^d$ | `kernel="poly", degree=d, coef0=1` | Boundary known to be a low-degree polynomial |
+| Radial (RBF, Gaussian) | $\exp(-\gamma \lVert x - x' \rVert^2)$ | `kernel="rbf", gamma=γ` | The default for general non-linear boundaries |
+
+A kernel is a measure of **similarity**. With the RBF kernel, training points far from $x$ contribute almost nothing to
+$f(x)$ — the SVM behaves **locally**, like KNN; larger $\gamma$ gives a more local, wigglier fit.
+
+## Multi-class problems and support vector regression
+
+- **Multi-class:** the SVM is inherently a two-class method, and there are two ways to combine classifiers. **One-versus-one** fits a classifier for every pair of classes, $K(K-1)/2$ in all, and assigns a new observation to the class with the most votes; `SVC` does this. **One-versus-rest** fits $K$ classifiers, each “this class versus all the others”, and assigns to the largest $f_k(x)$; there are fewer classifiers, but each is trained on very unbalanced classes; `LinearSVC` uses it by default.
+- **Support vector regression (ε-SVR):** its purpose is to predict a quantitative response, with kernels for non-linear relationships; compared with least-squares regression it is less sensitive to outliers and the model depends on only part of the observations. It uses the **ε-insensitive loss** $V_\varepsilon(r) = \max(0, \lvert r \rvert - \varepsilon)$, where $r$ is the residual. A prediction within $\varepsilon$ of the observed value costs nothing — equivalently, a band of width $\varepsilon$ above and below the fit forms an **ε-tube**, and points inside it do not affect the model; the part beyond the band costs linearly, so outliers pull the fit less than under squared loss. Only points on the edge of the tube or outside it are support vectors; larger $\varepsilon$ means a wider tube, fewer support vectors and a sparser model. Parameters: $C$, $\varepsilon$ and the kernel (`sklearn.svm.SVR`).
+
+## Choosing C and the kernel parameters
+
+1. **Scale** the features (`StandardScaler`, inside a `Pipeline`): the RBF kernel uses Euclidean distance, exactly like KNN.
+2. Start with the **RBF kernel**; with very large $p$ (especially $p \gg n$) use a **linear kernel** — the classes are
+then easy to separate anyway, and the extra flexibility of a non-linear kernel only adds variance.
+3. **Grid-search** $(C, \gamma)$ on a log₂ scale and keep the pair with the best CV accuracy. A common grid:
+a coarse grid covering $C = 2^{-5}, 2^{-1}, \ldots, 2^{15}$ and $\gamma = 2^{-15}, 2^{-11}, \ldots, 2^{1}, 2^{3}$ (steps of
+$2^4$, end points included), then refine around the best point by factors $2^{\pm1}, 2^{\pm2}$.
+4. Tune $C$ and $\gamma$ **together**: the CV surface is usually a diagonal plateau (a large $C$ with a small $\gamma$
+does about as well as a moderate $C$ with a larger $\gamma$), and the corner with large $C$ and large $\gamma$ overfits.
+If the best point lies on the edge of the grid, enlarge the grid.
+5. For **imbalanced** classes, use different costs for the two classes (`class_weight="balanced"`).
+6. For regression (SVR), choose $C$, $\gamma$ and $\varepsilon$ jointly by cross-validation.
+
+## When to use SVMs
+
+| Aspect | SVM is a good candidate | SVM is a poor candidate |
+|:--|:--|:--|
+| Goal | Accurate **classification** | Probabilities or interpretable effects needed |
+| Boundary | Non-linear (RBF kernel), or linear in very high dimension | — (linear SVM ≈ logistic regression) |
+| Dimension | **Large $p$, even $p \gg n$**, with a linear kernel | Non-linear kernel with many **irrelevant** features |
+| Sample size | Small to moderate $n$ | Very large $n$: training time grows faster than linearly in $n$ |
+| Class overlap | Well-separated classes | Heavy overlap (logistic regression often preferred) |
+| Features | Quantitative, scaled | Unscaled features; many categorical features |
+| Outliers | Points far on the correct side have no influence | Misclassified outliers still pull the hinge loss linearly |
+
+
+# Comparing the Methods
+
+::: {.test-name}
+Flexibility, Decision Boundaries and Data Situations
+:::
+
+## Tasks and outputs
+
+| Method | Classification | Regression | Probabilities |
+|:--|:--:|:--:|:--|
+| KNN | ✓ | ✓ | ✓ (class shares among the neighbours) |
+| LDA, QDA | ✓ | — | ✓ |
+| Naive Bayes | ✓ | — | ✓ (often too extreme) |
+| SVM | ✓ (SVC) | ✓ (SVR) | Classes only; probabilities need separate calibration |
+
+LDA, QDA and naive Bayes model the distribution of $X$ within each class and obtain the posterior by Bayes’ theorem, so
+they are for classification only; KNN and SVM handle both classification and regression.
+
+## Decision boundaries and flexibility
+
+**Flexibility** is how wide a range of functions or decision-boundary shapes a model can fit: a low-flexibility model (e.g. a linear boundary) is restricted in shape, while a high-flexibility model (e.g. KNN with small $k$) can trace almost any shape. Higher flexibility means **lower bias and higher variance** — the training error always falls, while the test error first falls and then rises. Flexibility can be measured roughly by the “effective number of parameters” (e.g. $(K-1)(p+1)$ for LDA, about $N/k$ for KNN) and is controlled by tuning parameters ($k$, $C$, $\gamma$). With little data or much noise choose a less flexible method; a highly flexible method pays off only with plenty of data and a truly complex boundary.
+
+Writing each classification method as a model for the log-odds $\log\{\Pr(Y = k \mid x) / \Pr(Y = K \mid x)\}$:
+
+| Method | Form of the log-odds | Flexibility |
+|:--|:--|:--|
+| LDA, logistic regression | Linear: $a_k + \sum_j b_{kj} x_j$ | Lowest |
+| Naive Bayes | Additive: $a_k + \sum_j g_{kj}(x_j)$ | Medium (no interactions) |
+| QDA | Quadratic: adds $\sum_{j,l} c_{kjl}\, x_j x_l$ | Medium–high |
+| SVM, linear kernel | Linear $f(x)$ (classes only) | Low |
+| SVM, RBF kernel | $\sum_{i \in \mathcal{S}} \alpha_i y_i K(x_i, x) + b$ | High (set by $C$, $\gamma$) |
+| KNN | No parametric form | Highest (set by $k$) |
+
+
+## Information to collect before choosing a method
+
+Given a data set, first compute the following information and descriptive statistics, then use the table in the next
+section to pick candidate methods:
+
+| Information | How to look | Effect on the choice of method |
+|:--|:--|:--|
+| Type of response | Is $Y$ a class or quantitative; number of classes $K$ | Quantitative → KNN regression, SVR; class → all classification methods |
+| Sample size $n$, number of features $p$, $n/p$ | `X.shape` | $p \gg n$ → linear SVM, shrinkage LDA, naive Bayes; large $n$, small $p$ → KNN, RBF SVM; huge $n$ → avoid KNN, kernel SVM |
+| Observations per class $N_k$ and proportions | `y.value_counts()` | Any $N_k \le p$ → QDA cannot be fitted; a rare class → adjust the threshold, use precision / AUC, `class_weight` |
+| Feature types | Quantitative, categorical (number of levels), counts | Many categorical or mixed types → naive Bayes; distance and kernel methods suit quantitative features |
+| Scale | Standard deviation and range of each feature | Large differences → KNN and SVM must standardise |
+| Shape of the distributions | Skewness, kurtosis, share of outliers ($\lvert z \rvert > 3$), histograms, Q-Q plots | Strong skewness → transform (log) first; many outliers → LDA, QDA (Gaussian assumptions) are not robust |
+| Correlation between features | Correlation matrix, largest $\lvert r \rvert$ | Strong correlation → avoid naive Bayes; large $p$ with strong correlation → shrinkage LDA |
+| Similar spread across classes? | Ratio of class standard deviations, differences between class correlations, scatter plots by class | Similar → LDA; clearly different with enough $n$ → QDA |
+| Shape of the boundary | Judged from the formal cross-validated comparison of the methods | Linear methods about as good as flexible ones → a linear boundary is enough; KNN, RBF SVM clearly better → irregular boundary; none beats the null rate → very weak signal |
+| Regression: shape of $y$ against $x$ and noise | Scatter plots, smoothers; trend, periodicity | Compare KNN regression and SVR with the linear-regression baseline; non-linear with small $p$ → KNN regression; many outliers → SVR |
+| Ordering of the data | Time or spatial data? | Cross-validate by time blocks; shuffle sorted data first |
+| Missing values | Share missing per feature | Most of these methods do not accept missing values; impute first |
+
+## Choosing by data situation
+
+| True boundary / data situation | Better methods | Remarks |
+|:--|:--|:--|
+| **Linear**, classes roughly Gaussian | LDA, logistic regression | The extra variance of KNN is not offset by lower bias |
+| Linear, but heavy-tailed (outliers) | Logistic regression | LDA close; QDA deteriorates |
+| **Quadratic** (different class covariances) | **QDA** | $N$ must be large relative to $K p^2/2$ |
+| **Complicated non-linear**, large $n$, small $p$ | **KNN with $k$ chosen by CV**, RBF SVM | $k = 1$ is usually worst |
+| Non-linear, **very few observations per class** | Naive Bayes | The other methods have too much variance |
+| **$p \gg n$** (genes, text) | Linear SVM, shrinkage LDA, naive Bayes | Non-linear kernels only add variance; naive Bayes suffers when features are strongly correlated |
+
+**KNN versus linear regression.** When the true $f$ is linear, linear regression wins; when $f$ is non-linear and $p$ is
+very small, KNN wins, but adding predictors unrelated to $Y$ makes KNN deteriorate quickly, and with few observations per
+predictor parametric methods usually do better.
+
+**SVM versus logistic regression.** Both fit a linear boundary and the results are often very similar; SVMs tend to do
+better when the classes are well separated, logistic regression when they overlap more — and logistic regression gives
+probabilities.
+
+**LDA versus logistic regression.** Both have linear log-odds; they differ in how the coefficients are estimated: LDA
+maximises the joint likelihood of $(X, Y)$ assuming Gaussian $X$ with a common $\Sigma$, is more efficient when that holds
+and is still defined when the classes are perfectly separable; logistic regression uses only the conditional likelihood of
+$Y \mid X$, makes no assumption on the distribution of $X$ and is more robust. In practice the two usually give very
+similar results.
+
+**High-dimensional data ($p \gg n$).** When $p \gg n$, choose a **well-regularised linear** method.
+
+# Summary for the Decision Tree
+
+::: {.test-name}
+When to Choose KNN, LDA, QDA, Naive Bayes or SVM
+:::
+
+## Decision flowcharts
+
+Figure 1 is the overall workflow once data arrive; when Y is a class, choose the method with Figure 2. Blue diamonds are decisions, green boxes recommended methods, orange boxes steps to confirm with the user.
+
+```{mermaid}
+%%| fig-cap: "Figure 1: main workflow"
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "Noto Sans TC, Microsoft JhengHei, sans-serif", "fontSize": "14px", "lineColor": "#8A96A3", "edgeLabelBackground": "#FFFFFF", "primaryTextColor": "#24303A"}, "flowchart": {"curve": "basis", "nodeSpacing": 30, "rankSpacing": 40}}}%%
+flowchart TD
+ A([Upload CSV or Excel]) --> B{Y and X specified?}
+ B -- No --> C[Ask the user to choose the columns]
+ C --> B
+ B -- Yes --> D[Check missing shares, data types, n, p, n/p]
+ D --> D1[List missing values and pre-processing proposals: imputation, encoding, word counts]
+ D1 --> E{User confirms the pre-processing?}
+ E -- No --> F[Revise the proposal and confirm again]
+ F --> D1
+ E -- Yes --> E1[Apply the confirmed pre-processing]
+ E1 --> E2[EDA: descriptive statistics, histograms, box plots, correlation heat map]
+ E2 --> E3[Data profile: class sizes and shares, class spreads, feature correlations, scales]
+ E3 --> G{Y quantitative or a class?}
+ G -- Quantitative --> R3[KNN regression, SVR, compared with a linear-regression baseline]
+ G -- Class --> S[Go to classification method choice, Figure 2]
+ S --> T{Rare class?}
+ T -- Yes --> T1[class_weight or threshold; judge by sensitivity, precision, AUC]
+ T -- No --> L
+ T1 --> L
+ R3 --> L{User confirms the candidate models?}
+ L -- No --> M[Explain alternatives and wait for confirmation]
+ M --> L
+ L -- Yes --> N[Standardise inside a Pipeline; tune by CV; keep a test set]
+ N --> N1[Compare with a baseline: majority class for classification, linear regression for regression]
+ N1 --> O{Agree to adjust threshold, parameters or method?}
+ O -- No --> P[Keep the results and state the limitations]
+ O -- Yes --> Q[Re-tune by CV and compare]
+ Q --> Z([Produce the report and reproducible code])
+ P --> Z
+ class A,D,D1,E1,E2,E3,N,N1,Q,P,Z,S proc
+ class B,E,G,T,L,O dec
+ class R3,T1 method
+ class C,F,M user
+ classDef proc fill:#F6F8FA,stroke:#A0AAB4,color:#24303A
+ classDef dec fill:#EAF2FB,stroke:#4C78A8,color:#1F3A5F
+ classDef method fill:#EAF5EC,stroke:#4E9A5B,color:#1E4D2B
+ classDef user fill:#FDF4E7,stroke:#D49A4A,color:#5A3A12
+```
+
+```{mermaid}
+%%| fig-cap: "Figure 2: suggested classification methods"
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "Noto Sans TC, Microsoft JhengHei, sans-serif", "fontSize": "14px", "lineColor": "#8A96A3", "edgeLabelBackground": "#FFFFFF", "primaryTextColor": "#24303A"}, "flowchart": {"curve": "basis", "nodeSpacing": 30, "rankSpacing": 40}}}%%
+flowchart TD
+ A([Y is categorical]) --> B{Feature type?}
+ B -- Text or word counts --> B1[Suggested: multinomial naive Bayes, linear SVM]
+ B -- Mostly categorical --> B2[Suggested: naive Bayes with a suitable 1-D distribution per feature]
+ B -- Mostly continuous --> C{p relative to n?}
+ C -- p close to or above n --> C1{Strong correlation between features?}
+ C1 -- Yes --> C2[Suggested: shrinkage LDA, linear SVM]
+ C1 -- No --> C3[Suggested: shrinkage LDA, linear SVM, naive Bayes]
+ C -- n much larger than p --> D{Each class much larger than p?}
+ D -- No --> D1[Suggested: LDA, naive Bayes]
+ D -- Yes --> E{p small and n much larger than p?}
+ E -- Yes --> E1[Suggested: LDA, QDA, KNN, RBF SVM]
+ E -- No --> E2[Suggested: LDA, QDA, RBF SVM]
+ C2 & C3 & D1 & E1 & E2 & B1 & B2 --> Z[Suggested methods are pre-selected and compared by cross-validation; other feasible methods can be added]
+ class A,Z proc
+ class B,C,C1,D,E dec
+ class B1,B2,C2,C3,D1,E1,E2 method
+ classDef proc fill:#F6F8FA,stroke:#A0AAB4,color:#24303A
+ classDef dec fill:#EAF2FB,stroke:#4C78A8,color:#1F3A5F
+ classDef method fill:#EAF5EC,stroke:#4E9A5B,color:#1E4D2B
+```
+
+The chart shows the methods suggested for comparison first. Methods that cannot be estimated or are too costly to compute (e.g. QDA when a class has no more than p observations per fold, kernel SVMs with more than 20,000 training observations) are removed by the program, with the reason stated. When features are strongly correlated, naive Bayes is not suggested in any branch.
+
+## Analysis procedure
+
+Given a new data set, proceed in order:
+
+1. **Define the task:** classification or regression; is the goal accurate prediction or explaining effects?
+2. **Inspect the data:** following “Information to collect before choosing a method” in Section 5, compute $N$, $p$
+(the number of encoded columns entering the model), $N/p$, feature types, class proportions, the smallest class per fold,
+distribution shapes, correlations between features, and whether class spreads are similar.
+3. **List the suggested methods from the flowchart**, adding other feasible methods as needed; add a majority-class
+or linear-regression baseline.
+4. **Pre-process:** standardise quantitative features (essential for KNN and SVM) and encode categorical ones;
+put all pre-processing inside a `Pipeline` so no information leaks from the validation folds.
+5. **Split the data:** hold out a test set; stratify for classification (`stratify=y`); with time-ordered or sorted
+data, shuffle the CV folds or split by time.
+6. **Tune by cross-validation:**
+
+| Method | Main parameters | Suggested search range |
+|:--|:--|:--|
+| KNN | $k$ | Odd values from 1 to about $\sqrt{N}$ |
+| LDA | Shrinkage (when $p$ is near $N$, i.e. $N/p < 10$) | `shrinkage="auto"` |
+| QDA | `reg_param` | 0 to 1 |
+| Naive Bayes | Density type per feature, smoothing `alpha` | Set by variable type |
+| SVM (RBF) | $C$, $\gamma$ | Coarse grid $C = 2^{-5}, 2^{-1}, \ldots, 2^{15}$; $\gamma = 2^{-15}, 2^{-11}, \ldots, 2^{1}, 2^{3}$ (steps of $2^4$, end points included); then refine around the best point by $2^{\pm1}, 2^{\pm2}$ |
+| SVR | $C$, $\gamma$, $\varepsilon$ | As above; $\varepsilon$ about 0.1–1 times the noise sd |
+
+7. **Evaluate:** report on the test set; compare with the baseline; for imbalanced data look at AUC, sensitivity
+and precision and adjust the threshold; check calibration when probabilities are needed.
+8. **Report:** the final method, its parameters, test performance, and the reason for the choice (which decision
+rule the data characteristics match).
+
+## References
+
+Bishop, C. M. (2006). *Pattern Recognition and Machine Learning*. Springer.
+
+Chang, C.-C., & Lin, C.-J. (2011). LIBSVM: A library for support vector machines. *ACM Transactions on Intelligent
+Systems and Technology, 2*(3), 27:1–27:27.
+
+Fisher, R. A. (1936). The use of multiple measurements in taxonomic problems. *Annals of Eugenics, 7*(2), 179–188.
+
+Hastie, T., Tibshirani, R., & Friedman, J. (2009). *The Elements of Statistical Learning* (2nd ed.). Springer.
+
+Hsu, C.-W., Chang, C.-C., & Lin, C.-J. (2003). *A practical guide to support vector classification*. Technical report,
+National Taiwan University.
+
+James, G., Witten, D., Hastie, T., Tibshirani, R., & Taylor, J. (2023). *An Introduction to Statistical Learning: with
+Applications in Python*. Springer.
+
+Pedregosa, F., et al. (2011). Scikit-learn: Machine learning in Python. *Journal of Machine Learning Research, 12*,
+2825–2830.

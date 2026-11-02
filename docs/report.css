@@ -1,0 +1,54 @@
+:root {
+--bs-body-font-family: "Times New Roman", "DFKai-SB", "標楷體",
+"BiauKai", "Microsoft JhengHei", "微軟正黑體", "PingFang TC",
+"Noto Sans TC", "PMingLiU", "新細明體", serif;
+}
+body, h1, h2, h3, h4, h5, h6,
+.quarto-title-block, #TOC, .sidebar, table, .callout {
+font-family: var(--bs-body-font-family);
+}
+
+.quarto-title-block .quarto-title .title { font-weight: 700; }
+body {
+font-size: 1.02rem;
+line-height: 1.75;
+letter-spacing: 0.01em;
+}
+#quarto-content main { max-width: 900px; }
+
+main p { text-align: justify; }
+
+h1, h2, h3 { font-weight: 700; letter-spacing: 0.01em; }
+h1 { border-bottom: 2px solid #d0d7de; padding-bottom: .3rem; margin-top: 2.2rem; }
+h2 { margin-top: 1.8rem; }
+
+main table {
+margin: 1rem auto;
+border-collapse: collapse;
+}
+main table thead th {
+background: #f2f5f8;
+border-bottom: 2px solid #b9c2cc;
+}
+main table td, main table th {
+padding: .45rem .8rem;
+border: 1px solid #e2e6ea;
+text-align: center;
+}
+
+.math.display { font-size: 1.03rem; }
+
+.test-name {
+font-size: 1.25rem;
+font-style: italic;
+color: #5a6b7b;
+font-weight: 500;
+margin-top: -.3rem;
+margin-bottom: 1.4rem;
+padding-left: .6rem;
+border-left: 4px solid #4c72b0;
+}
+
+.callout { border-radius: 8px; }
+
+pre.sourceCode { border-radius: 8px; }

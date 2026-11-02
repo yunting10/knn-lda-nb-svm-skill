@@ -1,0 +1,14 @@
+numpy>=1.24
+pandas>=2.0
+scipy>=1.11
+scikit-learn>=1.6
+matplotlib>=3.9
+openpyxl>=3.1
+markdown>=3.5
+# ── 以下皆為選用 ──
+# pandoc（https://pandoc.org）：report.html 的數學式較佳、可離線顯示；沒有時改用 markdown 套件
+# Quarto（https://quarto.org）：自行 render report.qmd 時才需要
+# 產生 report.pdf（擇一）：
+#   playwright>=1.40（pip install playwright && playwright install chromium）
+#   或含 xeCJK 套件的 TeX（TeX Live、MiKTeX）
+# 沒有 PDF 工具時，用瀏覽器開啟 report.html → 列印 → 另存為 PDF 即可
