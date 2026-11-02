@@ -23,7 +23,7 @@ knn-lda-nb-svm-skill/
 │   └── report.css              兩份 qmd 共用的 HTML 樣式
 └── examples/                   示範資料（不放進上傳 Claude 的 zip）
     ├── README.md               資料說明、來源與對話範例
-    ├── wine.csv                分類示範
+    ├── breast_cancer.csv       分類示範
     └── auto-mpg.csv            迴歸示範
 ```
 
@@ -47,14 +47,15 @@ pip install -r requirements.txt
 
 ## 安裝到 Claude
 
-**Claude.ai（網頁或桌面版）**
+### Claude.ai（網頁或桌面版）
 
 1. 設定 → Capabilities：開啟程式碼執行（code execution）。
-2. 把 skill 資料夾壓縮成 zip：zip 裡最上層必須是 `knn-lda-nb-svm-skill/` 資料夾，資料夾內直接就是 `SKILL.md`。不要多包一層（例如 `repo-main/knn-lda-nb-svm-skill/SKILL.md`），也不要只壓縮資料夾裡的檔案而沒有資料夾本身。資料夾名稱必須與 `SKILL.md` 的 `name` 相同。
-3. 建議只放 `SKILL.md`、`references/`、`scripts/`（可加 `README.md`、`requirements.txt`），不放 `docs/`，以減少大小。
-4. 自訂 → Skills → 「+」→ 上傳 zip。
+2. 下載 repo 中已打包好的 [`knn-lda-nb-svm-skill.zip`](knn-lda-nb-svm-skill.zip)，下載後**不要解壓縮**。
+3. 自訂 → Skills → 「+」→ 上傳 `knn-lda-nb-svm-skill.zip`。
 
-**Claude Code**
+> **自行修改後重新打包：** zip 最上層必須是 `knn-lda-nb-svm-skill/` 資料夾，資料夾內直接就是 `SKILL.md`；資料夾名稱必須與 `SKILL.md` 的 `name` 相同。不要多包一層，也不要只壓縮資料夾裡的檔案而沒有資料夾本身。建議只放 `SKILL.md`、`references/`、`scripts/`、`README.md`、`requirements.txt`，不放 `docs/`、`examples/`。
+
+### Claude Code
 
 - 個人使用：把資料夾放到 `~/.claude/skills/`，路徑應為 `~/.claude/skills/knn-lda-nb-svm-skill/SKILL.md`。
 - 單一專案使用：放到專案的 `.claude/skills/knn-lda-nb-svm-skill/SKILL.md`。
@@ -75,7 +76,7 @@ AI 會依 `SKILL.md` 的流程逐步詢問；需要選擇時會以選單或編�
 
 `examples/` 內附兩份公開資料，可直接上傳到 Claude 試用：
 
-- `wine.csv`：葡萄酒品種分類（178 筆，三類）
+- `breast_cancer.csv`：乳房腫瘤良性／惡性分類（569 筆，二元）
 - `auto-mpg.csv`：汽車油耗預測（398 筆，迴歸）
 
 資料說明、來源與對話範例見 [examples/README.md](examples/README.md)。
