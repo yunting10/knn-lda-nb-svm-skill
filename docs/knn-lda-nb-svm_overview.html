@@ -3561,7 +3561,7 @@ V_\varepsilon(r) = \max(0, \lvert r \rvert - \varepsilon)
 </tbody>
 </table>
 <h3 id="比較">比較</h3>
-<p><strong>彈性</strong>（flexibility）指模型能配適的函數或決策邊界形狀有多廣。彈性越高，偏差越低、變異越高：訓練誤差一定下降，測試誤差則先降後升。資料少、雜訊大時選彈性低的方法；資料多且邊界複雜時才值得用彈性高的方法。</p>
+<p><strong>彈性</strong>（flexibility）指模型能配適的函數或決策邊界形狀有多廣。彈性越高，偏差越低、變異越高。資料少、雜訊大時選彈性低的方法；資料多且邊界複雜時才值得用彈性高的方法。</p>
 <table class="caption-top">
 <thead>
 <tr class="header">
@@ -3720,7 +3720,7 @@ V_\varepsilon(r) = \max(0, \lvert r \rvert - \varepsilon)
 </table>
 <ul>
 <li><strong>選模指標：</strong> 最小類別比例 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>≥</mo><mn>20</mn><mi>%</mi></mrow><annotation encoding="application/x-tex">\ge 20\%</annotation></semantics></math> 用準確率；不平衡時二元用 AUC、多類別用平衡準確率；迴歸用 RMSE</li>
-<li><strong>基準模型：</strong> 分類為永遠預測多數類別，迴歸為以訓練資料平均數預測</li>
+<li><strong>比較模型：</strong> 分類為 logistic 迴歸，迴歸為線性迴歸；用來確認非線性或較複雜的方法是否真的帶來改善，不會被選為最終模型</li>
 <li><strong>準確率的 95% 信賴區間</strong>（Wilson）：</li>
 </ul>
 <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mfrac><mrow><mover><mi>p</mi><mo accent="true">̂</mo></mover><mo>+</mo><mfrac><msup><mi>z</mi><mn>2</mn></msup><mrow><mn>2</mn><mi>n</mi></mrow></mfrac><mo>±</mo><mi>z</mi><msqrt><mrow><mfrac><mrow><mover><mi>p</mi><mo accent="true">̂</mo></mover><mrow><mo stretchy="true" form="prefix">(</mo><mn>1</mn><mo>−</mo><mover><mi>p</mi><mo accent="true">̂</mo></mover><mo stretchy="true" form="postfix">)</mo></mrow></mrow><mi>n</mi></mfrac><mo>+</mo><mfrac><msup><mi>z</mi><mn>2</mn></msup><mrow><mn>4</mn><msup><mi>n</mi><mn>2</mn></msup></mrow></mfrac></mrow></msqrt></mrow><mrow><mn>1</mn><mo>+</mo><mfrac><msup><mi>z</mi><mn>2</mn></msup><mi>n</mi></mfrac></mrow></mfrac><mo>,</mo><mspace width="2.0em"></mspace><mi>z</mi><mo>=</mo><mn>1.96</mn></mrow><annotation encoding="application/x-tex">
@@ -3753,7 +3753,7 @@ flowchart TD
  end
  subgraph S3 [&quot; &quot;]
   direction LR
-  I[交叉驗證調參] --&gt; J[測試集評估、與基準比較]
+  I[交叉驗證調參] --&gt; J[測試集評估、模型比較]
   J --&gt; K(確認門檻或參數)
   K --&gt; L([報告與完整程式碼])
  end
@@ -3776,7 +3776,7 @@ flowchart TD
 </div>
 </div>
 </div>
-<p>金色為需要使用者確認的步驟。基準模型：分類為永遠預測多數類別與 logistic 迴歸，迴歸為線性迴歸。</p>
+<p>金色為需要使用者確認的步驟。</p>
 <h3 id="分類方法建議">分類方法建議</h3>
 <div class="flow-narrow">
 <div class="cell" data-layout-align="default">
